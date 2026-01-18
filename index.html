@@ -1,0 +1,659 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CSVPro - Professional Data Export Tool</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Google Fonts (Noto Sans JP) -->
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+
+    <style>
+        body {
+            font-family: 'Noto Sans JP', sans-serif;
+            background-color: #f3f4f6; /* gray-100 */
+        }
+        
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1; 
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #c1c1c1; 
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #a8a8a8; 
+        }
+
+        /* Drag & Drop Visuals */
+        .dragging {
+            opacity: 0.5;
+            border: 2px dashed #3b82f6; /* blue-500 */
+        }
+
+        /* Slide Panels */
+        .panel-slide {
+            transition: transform 0.3s ease-in-out;
+        }
+        .panel-closed {
+            transform: translateX(100%);
+        }
+        .panel-open {
+            transform: translateX(0);
+        }
+
+        /* AI Chat Animation */
+        .chat-window {
+            transition: opacity 0.3s ease, transform 0.3s ease;
+            transform-origin: bottom right;
+        }
+        .chat-hidden {
+            opacity: 0;
+            transform: scale(0.9) translateY(20px);
+            pointer-events: none;
+        }
+        .chat-visible {
+            opacity: 1;
+            transform: scale(1) translateY(0);
+            pointer-events: auto;
+        }
+    </style>
+</head>
+<body class="h-screen flex flex-col overflow-hidden text-slate-700">
+
+    <!-- 1. Header -->
+    <header class="bg-white border-b border-gray-200 h-16 flex items-center justify-between px-6 shadow-sm z-20 flex-shrink-0">
+        <div class="flex items-center gap-3">
+            <div class="bg-blue-600 text-white p-1.5 rounded text-lg font-bold">
+                <i class="fa-solid fa-file-csv"></i>
+            </div>
+            <h1 class="text-xl font-bold text-gray-800 tracking-tight">CSV<span class="text-blue-600">Pro</span></h1>
+        </div>
+
+        <div class="flex items-center gap-4">
+            <!-- 追加: お気に入り一覧ボタン -->
+            <button id="favoriteToggleBtn" class="flex items-center gap-2 text-gray-500 hover:text-amber-500 transition-colors px-3 py-1.5 rounded hover:bg-amber-50 text-sm font-medium">
+                <i class="fa-solid fa-star"></i> お気に入り一覧
+            </button>
+            <button id="historyToggleBtn" class="flex items-center gap-2 text-gray-500 hover:text-blue-600 transition-colors px-3 py-1.5 rounded hover:bg-gray-50 text-sm font-medium">
+                <i class="fa-solid fa-clock-rotate-left"></i> 出力履歴
+            </button>
+            <button class="text-gray-400 hover:text-gray-600 transition-colors p-2">
+                <i class="fa-solid fa-gear text-lg"></i>
+            </button>
+            <div class="flex items-center gap-2 bg-blue-50 px-3 py-1.5 rounded-full border border-blue-100">
+                <div class="w-2 h-2 rounded-full bg-green-500"></div>
+                <span class="text-xs font-bold text-blue-800">管理者アカウント</span>
+            </div>
+        </div>
+    </header>
+
+    <!-- 2. Search & Filter Bar -->
+    <div class="bg-white border-b border-gray-200 p-4 flex flex-col md:flex-row gap-4 items-end md:items-center justify-between shadow-sm z-10 flex-shrink-0">
+        <div class="flex flex-wrap items-end gap-4 w-full md:w-auto">
+            <!-- Dataset Selector -->
+            <div class="flex flex-col gap-1 w-full md:w-64">
+                <label class="text-xs font-bold text-gray-500 uppercase">出力データ</label>
+                <div class="relative">
+                    <select class="w-full appearance-none bg-gray-50 border border-gray-300 text-gray-700 py-2 px-3 pr-8 rounded leading-tight focus:outline-none focus:bg-white focus:border-blue-500 transition-colors">
+                        <option>請求データ</option>
+                        <option>給与データ</option>
+                        <option>得意先マスタ</option>
+                    </select>
+                    <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-500">
+                        <i class="fa-solid fa-chevron-down text-xs"></i>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Period Selector -->
+            <div class="flex flex-col gap-1 flex-1 md:flex-none">
+                <label class="text-xs font-bold text-gray-500 uppercase">出力期間</label>
+                <div class="flex items-center gap-2">
+                    <input type="date" value="2025-10-01" class="bg-gray-50 border border-gray-300 text-gray-700 py-2 px-3 rounded focus:outline-none focus:border-blue-500 text-sm">
+                    <span class="text-gray-400">～</span>
+                    <input type="date" value="2025-10-31" class="bg-gray-50 border border-gray-300 text-gray-700 py-2 px-3 rounded focus:outline-none focus:border-blue-500 text-sm">
+                </div>
+            </div>
+        </div>
+
+        <!-- Update Preview Button -->
+        <button onclick="refreshPreview()" class="group bg-white border border-blue-200 text-blue-600 hover:bg-blue-50 hover:border-blue-300 px-4 py-2 rounded shadow-sm transition-all flex items-center gap-2">
+            <i class="fa-solid fa-rotate group-hover:rotate-180 transition-transform duration-500"></i>
+            <span class="font-medium">プレビュー更新</span>
+            <span class="text-xs bg-blue-100 text-blue-700 px-1.5 rounded border border-blue-200">F2</span>
+        </button>
+    </div>
+
+    <!-- 3. Main Content -->
+    <main class="flex-1 flex overflow-hidden relative">
+        
+        <!-- Left: Column Config Panel -->
+        <aside class="w-full md:w-1/3 lg:w-1/4 bg-gray-50 border-r border-gray-200 flex flex-col z-0">
+            <div class="p-4 border-b border-gray-200 bg-gray-50 flex justify-between items-center sticky top-0">
+                <h2 class="font-bold text-gray-700 flex items-center gap-2">
+                    <i class="fa-solid fa-list-check text-blue-500"></i> 出力項目・列順序
+                </h2>
+                <button onclick="saveFavorite()" class="text-xs text-blue-600 hover:underline cursor-pointer" title="現在の構成をお気に入りに保存">
+                    <i class="fa-regular fa-star"></i> 保存
+                </button>
+            </div>
+            
+            <div class="p-2 overflow-y-auto flex-1 custom-scrollbar" id="columnListContainer">
+                <!-- Columns will be injected here by JS -->
+            </div>
+            
+            <div class="p-3 bg-gray-100 text-xs text-gray-500 text-center border-t border-gray-200">
+                ドラッグ＆ドロップで並び替え
+            </div>
+        </aside>
+
+        <!-- Right: Preview Area -->
+        <section class="flex-1 bg-white flex flex-col overflow-hidden w-full md:w-2/3 lg:w-3/4">
+            <div class="p-2 bg-blue-50 border-b border-blue-100 text-xs text-blue-800 flex items-center justify-between">
+                <div class="flex items-center gap-4">
+                    <span><i class="fa-solid fa-circle-info mr-1"></i> <span id="previewInfoText">5件のみプレビュー表示しています</span></span>
+                    <!-- 追加: 全件表示ボタン -->
+                    <button id="togglePreviewLimitBtn" onclick="togglePreviewLimit()" class="flex items-center gap-1 bg-white border border-blue-200 hover:bg-blue-100 text-blue-700 px-2 py-0.5 rounded transition-colors shadow-sm">
+                        <i class="fa-solid fa-table-list"></i> 全件プレビュー
+                    </button>
+                </div>
+                <span id="columnCountBadge">出力項目: 6</span>
+            </div>
+            
+            <div class="overflow-auto flex-1 p-4 relative">
+                <table class="min-w-full border-collapse text-sm text-left shadow-sm rounded-lg overflow-hidden">
+                    <thead class="bg-gray-100 text-gray-600 font-bold sticky top-0 shadow-sm z-10" id="tableHeader">
+                        <!-- Headers injected by JS -->
+                    </thead>
+                    <tbody class="divide-y divide-gray-100" id="tableBody">
+                        <!-- Rows injected by JS -->
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- 5. Panels (History & Favorite) -->
+        
+        <!-- History Panel (Slide-in) -->
+        <div id="historyPanel" class="fixed top-16 bottom-16 right-0 w-80 bg-white shadow-2xl border-l border-gray-200 z-30 panel-slide panel-closed flex flex-col">
+            <div class="p-4 border-b border-gray-200 flex justify-between items-center bg-gray-50">
+                <h3 class="font-bold text-gray-700"><i class="fa-solid fa-clock-rotate-left mr-2 text-gray-400"></i>出力履歴</h3>
+                <button onclick="toggleHistory()" class="text-gray-400 hover:text-gray-600">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+            <div class="flex-1 overflow-y-auto p-4 space-y-4" id="historyList">
+                <div class="border border-gray-100 rounded-lg p-3 hover:bg-gray-50 transition-colors cursor-pointer group">
+                    <div class="flex justify-between items-start mb-2">
+                        <span class="text-xs font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded">請求データ</span>
+                        <span class="text-xs text-gray-400">10分前</span>
+                    </div>
+                    <p class="text-xs text-gray-600 mb-2">出力件数: 1,240件</p>
+                    <div class="flex items-center gap-2 text-xs text-gray-400 group-hover:text-blue-500">
+                        <i class="fa-solid fa-download"></i> 再ダウンロード
+                    </div>
+                </div>
+                <div class="border border-gray-100 rounded-lg p-3 hover:bg-gray-50 transition-colors cursor-pointer group">
+                    <div class="flex justify-between items-start mb-2">
+                        <span class="text-xs font-bold text-green-600 bg-green-50 px-2 py-0.5 rounded">顧客マスター</span>
+                        <span class="text-xs text-gray-400">昨日 14:30</span>
+                    </div>
+                    <p class="text-xs text-gray-600 mb-2">出力件数: 58件</p>
+                    <div class="flex items-center gap-2 text-xs text-gray-400 group-hover:text-green-500">
+                        <i class="fa-solid fa-download"></i> 再ダウンロード
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 追加: Favorite Panel (Slide-in) -->
+        <div id="favoritePanel" class="fixed top-16 bottom-16 right-0 w-80 bg-white shadow-2xl border-l border-gray-200 z-30 panel-slide panel-closed flex flex-col">
+            <div class="p-4 border-b border-gray-200 flex justify-between items-center bg-amber-50">
+                <h3 class="font-bold text-amber-700"><i class="fa-solid fa-star mr-2 text-amber-500"></i>お気に入り設定</h3>
+                <button onclick="toggleFavorite()" class="text-gray-400 hover:text-gray-600">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+            <div class="flex-1 overflow-y-auto p-4 space-y-4" id="favoriteList">
+                <div class="border border-gray-100 rounded-lg p-3 hover:bg-amber-50 transition-colors cursor-pointer group border-l-4 border-l-amber-400 bg-white shadow-sm">
+                    <div class="flex justify-between items-start mb-1">
+                        <span class="text-sm font-bold text-gray-800">月次請求出力用A</span>
+                        <button class="text-gray-300 hover:text-red-500"><i class="fa-solid fa-trash-can"></i></button>
+                    </div>
+                    <p class="text-xs text-gray-500 mb-2">更新日: 2025/10/01</p>
+                    <div class="flex items-center gap-2 text-xs text-amber-600 font-medium">
+                        <i class="fa-solid fa-check"></i> この設定を適用
+                    </div>
+                </div>
+                
+                <div class="border border-gray-100 rounded-lg p-3 hover:bg-amber-50 transition-colors cursor-pointer group border-l-4 border-l-transparent bg-white shadow-sm">
+                    <div class="flex justify-between items-start mb-1">
+                        <span class="text-sm font-bold text-gray-800">経理確認用シンプル</span>
+                        <button class="text-gray-300 hover:text-red-500"><i class="fa-solid fa-trash-can"></i></button>
+                    </div>
+                    <p class="text-xs text-gray-500 mb-2">更新日: 2025/09/15</p>
+                    <div class="flex items-center gap-2 text-xs text-gray-400 group-hover:text-amber-600">
+                        <i class="fa-solid fa-check"></i> この設定を適用
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- 4. Footer -->
+    <footer class="bg-white border-t border-gray-200 p-4 h-20 flex justify-between items-center shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] z-20 flex-shrink-0">
+        <div class="text-sm text-gray-500 hidden md:block">
+            <span id="statusText">準備完了</span>
+        </div>
+        <div class="flex items-center gap-4 w-full md:w-auto justify-end">
+            <button onclick="window.location.reload()" class="px-6 py-2.5 rounded border border-red-200 text-red-600 font-medium hover:bg-red-50 hover:border-red-300 transition-colors focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2">
+                終了
+            </button>
+            <button onclick="exportCSV()" class="px-6 py-2.5 rounded bg-gradient-to-r from-blue-600 to-blue-700 text-white font-bold shadow-md hover:shadow-lg hover:from-blue-700 hover:to-blue-800 transition-all transform hover:-translate-y-0.5 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 flex items-center gap-2">
+                <i class="fa-solid fa-file-export"></i>
+                CSVエクスポート実行
+                <span class="bg-white/20 text-white text-xs px-1.5 py-0.5 rounded ml-2 font-normal">F1</span>
+            </button>
+        </div>
+    </footer>
+
+    <!-- 5. Interactive Elements (AI & Overlay) -->
+    
+    <!-- AI Chat Window -->
+    <div id="aiChatWindow" class="fixed bottom-24 right-6 w-80 bg-white rounded-xl shadow-2xl border border-gray-200 chat-hidden z-40 flex flex-col overflow-hidden">
+        <div class="bg-gradient-to-r from-indigo-600 to-purple-600 p-4 text-white flex justify-between items-center">
+            <div class="flex items-center gap-2">
+                <i class="fa-solid fa-robot"></i>
+                <span class="font-bold text-sm">AI アシスタント</span>
+            </div>
+            <button onclick="toggleAI()" class="hover:text-gray-200"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <div class="h-64 bg-gray-50 p-4 overflow-y-auto text-sm space-y-3">
+            <!-- チャット履歴開始 -->
+            <!-- ユーザー -->
+            <div class="flex gap-2 flex-row-reverse">
+                <div class="bg-indigo-600 text-white p-2 rounded-l-lg rounded-br-lg shadow-sm text-xs text-left">
+                    前年同月対比で売上を確認したい。<br>PDF形式でレポートを作成してください。
+                </div>
+            </div>
+            <!-- AI -->
+            <div class="flex gap-2">
+                <div class="w-6 h-6 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 text-xs flex-shrink-0">AI</div>
+                <div class="bg-white p-2 rounded-r-lg rounded-bl-lg shadow-sm text-gray-700 border border-gray-100 text-xs">
+                    CSV形式のみ対応しています。それでよければ、前年同月対比のデータ作成と出力は可能です。CSV形式で作成して出力しますか？
+                </div>
+            </div>
+            <!-- ユーザー -->
+            <div class="flex gap-2 flex-row-reverse">
+                <div class="bg-indigo-600 text-white p-2 rounded-l-lg rounded-br-lg shadow-sm text-xs">
+                    CSV形式でお願いします。
+                </div>
+            </div>
+            <!-- AI -->
+            <div class="flex gap-2">
+                <div class="w-6 h-6 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 text-xs flex-shrink-0">AI</div>
+                <div class="bg-white p-2 rounded-r-lg rounded-bl-lg shadow-sm text-gray-700 border border-gray-100 text-xs">
+                    承知いたしました、CSVファイルを作成いたします。
+                </div>
+            </div>
+            <!-- チャット履歴終了 -->
+        </div>
+        <div class="p-3 border-t border-gray-200 bg-white">
+            <div class="flex gap-2">
+                <input type="text" placeholder="AIに質問する..." class="flex-1 bg-gray-50 border border-gray-200 rounded px-3 py-1.5 text-sm focus:outline-none focus:border-indigo-500">
+                <button class="text-indigo-600 hover:text-indigo-800"><i class="fa-solid fa-paper-plane"></i></button>
+            </div>
+        </div>
+    </div>
+
+    <!-- AI FAB -->
+    <button onclick="toggleAI()" class="fixed bottom-24 right-6 w-14 h-14 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-full shadow-lg text-white text-2xl flex items-center justify-center hover:scale-110 transition-transform z-30 hover:shadow-xl focus:outline-none focus:ring-4 focus:ring-indigo-300">
+        <i class="fa-solid fa-wand-magic-sparkles"></i>
+    </button>
+
+    <!-- Toast Notification Container -->
+    <div id="toastContainer" class="fixed bottom-4 left-1/2 transform -translate-x-1/2 z-50 pointer-events-none transition-all duration-300 opacity-0 translate-y-4">
+        <div class="bg-gray-800 text-white px-6 py-3 rounded-full shadow-lg flex items-center gap-3">
+            <i class="fa-solid fa-circle-check text-green-400"></i>
+            <span id="toastMessage" class="font-medium text-sm">処理が完了しました</span>
+        </div>
+    </div>
+
+    <script>
+        // --- Data Definitions ---
+        
+        let columns = [
+            { id: 'inv_num', label: '請求番号', checked: true },
+            { id: 'inv_date', label: '請求年月日', checked: true },
+            { id: 'cust_name', label: '得意先名称', checked: true },
+            { id: 'total_inc', label: '税込合計金額', checked: true, type: 'currency' },
+            { id: 'tax_amt', label: '消費税額', checked: true, type: 'currency' },
+            { id: 'branch', label: '担当支店', checked: true },
+            { id: 'status', label: '入金ステータス', checked: false }, // Default hidden
+            { id: 'due_date', label: '支払期日', checked: false },     // Default hidden
+            { id: 'memo', label: '備考', checked: false }              // Default hidden
+        ];
+
+        // 修正: 請求番号を数値的な形式 (20251001001など) に変更
+        const mockData = [
+            { inv_num: '20251001001', inv_date: '2025/10/01', cust_name: '株式会社アルファ', total_inc: 154000, tax_amt: 14000, branch: '東京本社', status: '入金済', due_date: '2025/10/31', memo: '' },
+            { inv_num: '20251001002', inv_date: '2025/10/02', cust_name: 'ベータ商事 有限会社', total_inc: 88000, tax_amt: 8000, branch: '大阪支店', status: '未入金', due_date: '2025/10/31', memo: '早期入金予定' },
+            { inv_num: '20251001003', inv_date: '2025/10/05', cust_name: 'ガンマソリューションズ', total_inc: 330000, tax_amt: 30000, branch: '東京本社', status: '未入金', due_date: '2025/11/30', memo: '' },
+            { inv_num: '20251001004', inv_date: '2025/10/10', cust_name: 'デルタ工業', total_inc: 5500, tax_amt: 500, branch: '名古屋営業所', status: '入金済', due_date: '2025/10/31', memo: '' },
+            { inv_num: '20251001005', inv_date: '2025/10/12', cust_name: 'イプシロン・パートナーズ', total_inc: 1020000, tax_amt: 92727, branch: '東京本社', status: '保留', due_date: '2025/11/15', memo: '金額確認中' },
+            // 全件表示テスト用の追加データ
+            { inv_num: '20251001006', inv_date: '2025/10/13', cust_name: 'ゼータシステム', total_inc: 45000, tax_amt: 4090, branch: '福岡支店', status: '未入金', due_date: '2025/11/30', memo: '' },
+            { inv_num: '20251001007', inv_date: '2025/10/14', cust_name: '合同会社エータ', total_inc: 12000, tax_amt: 1090, branch: '東京本社', status: '入金済', due_date: '2025/10/31', memo: '' },
+        ];
+
+        // --- State Management ---
+        let isPreviewAll = false; // デフォルトは上位5件のみ
+
+        // --- DOM Elements ---
+        const columnListContainer = document.getElementById('columnListContainer');
+        const tableHeader = document.getElementById('tableHeader');
+        const tableBody = document.getElementById('tableBody');
+        const columnCountBadge = document.getElementById('columnCountBadge');
+        const historyPanel = document.getElementById('historyPanel');
+        const favoritePanel = document.getElementById('favoritePanel');
+        const aiChatWindow = document.getElementById('aiChatWindow');
+        const previewInfoText = document.getElementById('previewInfoText');
+        const togglePreviewLimitBtn = document.getElementById('togglePreviewLimitBtn');
+
+        // --- Initialization ---
+        document.addEventListener('DOMContentLoaded', () => {
+            renderColumnConfig();
+            renderTable();
+
+            // Keyboard Shortcuts
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'F1') {
+                    e.preventDefault();
+                    exportCSV();
+                } else if (e.key === 'F2') {
+                    e.preventDefault();
+                    refreshPreview();
+                }
+            });
+        });
+
+        // --- Core Functions ---
+
+        // Render Left Panel (Draggable List)
+        function renderColumnConfig() {
+            columnListContainer.innerHTML = '';
+            
+            columns.forEach((col, index) => {
+                const card = document.createElement('div');
+                // 修正: opacity-60を削除し、常に視認性を保つ
+                card.className = `flex items-center gap-3 p-3 mb-2 bg-white border rounded shadow-sm hover:shadow-md transition-all cursor-move select-none ${col.checked ? 'border-l-4 border-l-blue-500' : 'border-gray-200'}`;
+                card.setAttribute('draggable', 'true');
+                card.dataset.index = index;
+
+                // Drag Events
+                card.addEventListener('dragstart', handleDragStart);
+                card.addEventListener('dragover', handleDragOver);
+                card.addEventListener('drop', handleDrop);
+                card.addEventListener('dragend', handleDragEnd);
+
+                // Checkbox Logic
+                const checkbox = document.createElement('div');
+                checkbox.className = `w-5 h-5 rounded border flex items-center justify-center cursor-pointer transition-colors ${col.checked ? 'bg-blue-600 border-blue-600 text-white' : 'bg-white border-gray-300'}`;
+                checkbox.innerHTML = col.checked ? '<i class="fa-solid fa-check text-xs"></i>' : '';
+                
+                // Toggle Event (Clicking anywhere on card toggles check, unless dragging)
+                card.onclick = (e) => {
+                    // Prevent toggle if this click was part of a drag operation logic (simplified here)
+                    col.checked = !col.checked;
+                    renderColumnConfig(); // Re-render self to update style
+                    renderTable();        // Re-render preview
+                };
+
+                // Content
+                const label = document.createElement('span');
+                // 修正: text-gray-400 (薄いグレー) を text-gray-600 (濃いグレー) に変更し、非活性に見えないようにする
+                label.className = `flex-1 font-medium text-sm ${col.checked ? 'text-gray-800' : 'text-gray-600'}`;
+                label.textContent = col.label;
+
+                const dragHandle = document.createElement('div');
+                dragHandle.className = 'text-gray-300 cursor-move';
+                dragHandle.innerHTML = '<i class="fa-solid fa-grip-lines"></i>';
+
+                card.appendChild(checkbox);
+                card.appendChild(label);
+                card.appendChild(dragHandle);
+
+                columnListContainer.appendChild(card);
+            });
+
+            updateCountBadge();
+        }
+
+        // Render Right Panel (Table)
+        function renderTable() {
+            const activeColumns = columns.filter(c => c.checked);
+
+            // Render Header
+            let headerHTML = '<tr>';
+            activeColumns.forEach(col => {
+                headerHTML += `<th class="px-4 py-3 bg-gray-100 border-b border-gray-200 whitespace-nowrap text-xs text-gray-500 uppercase tracking-wider">${col.label}</th>`;
+            });
+            headerHTML += '</tr>';
+            tableHeader.innerHTML = headerHTML;
+
+            // Render Body
+            let bodyHTML = '';
+            
+            // 全件表示か、5件制限かを判定
+            const displayData = isPreviewAll ? mockData : mockData.slice(0, 5);
+
+            if (activeColumns.length === 0) {
+                bodyHTML = '<tr><td colspan="100%" class="text-center py-10 text-gray-400">出力項目が選択されていません</td></tr>';
+            } else {
+                displayData.forEach(row => {
+                    bodyHTML += '<tr class="hover:bg-blue-50 transition-colors bg-white">';
+                    activeColumns.forEach(col => {
+                        let cellData = row[col.id];
+                        let cellClass = "px-4 py-3 border-b border-gray-100 whitespace-nowrap text-gray-700";
+                        
+                        // Format Currency
+                        if (col.type === 'currency') {
+                            cellData = '¥' + cellData.toLocaleString();
+                            cellClass += " text-right font-mono";
+                        }
+
+                        // 修正: リンクを削除 (通常のテキストとして表示)
+                        /*
+                        if (col.id === 'inv_num' || col.id === 'cust_name') {
+                            cellData = `<a href="#" onclick="alert('詳細画面: ${cellData}'); return false;" class="text-blue-600 hover:text-blue-800 hover:underline decoration-blue-300">${cellData}</a>`;
+                        }
+                        */
+
+                        bodyHTML += `<td class="${cellClass}">${cellData}</td>`;
+                    });
+                    bodyHTML += '</tr>';
+                });
+            }
+            tableBody.innerHTML = bodyHTML;
+            updateCountBadge();
+        }
+
+        function updateCountBadge() {
+            const count = columns.filter(c => c.checked).length;
+            columnCountBadge.textContent = `出力項目: ${count}`;
+        }
+        
+        // 全件表示の切り替え
+        function togglePreviewLimit() {
+            isPreviewAll = !isPreviewAll;
+            
+            if (isPreviewAll) {
+                previewInfoText.textContent = `全 ${mockData.length} 件をプレビュー表示しています`;
+                togglePreviewLimitBtn.innerHTML = '<i class="fa-solid fa-compress"></i> 5件表示に戻す';
+                togglePreviewLimitBtn.classList.add('bg-blue-100');
+            } else {
+                previewInfoText.textContent = "上位 5 件のみプレビュー表示しています";
+                togglePreviewLimitBtn.innerHTML = '<i class="fa-solid fa-table-list"></i> 全件プレビュー';
+                togglePreviewLimitBtn.classList.remove('bg-blue-100');
+            }
+            
+            renderTable();
+        }
+
+        // --- Drag & Drop Handlers ---
+        let dragSrcEl = null;
+
+        function handleDragStart(e) {
+            this.classList.add('dragging');
+            dragSrcEl = this;
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/html', this.innerHTML);
+        }
+
+        function handleDragOver(e) {
+            if (e.preventDefault) {
+                e.preventDefault();
+            }
+            e.dataTransfer.dropEffect = 'move';
+            return false;
+        }
+
+        function handleDrop(e) {
+            if (e.stopPropagation) {
+                e.stopPropagation();
+            }
+            
+            const dragIndex = parseInt(dragSrcEl.dataset.index);
+            // Closest card to drop target
+            const targetCard = e.target.closest('[draggable="true"]');
+            
+            if (dragSrcEl !== targetCard && targetCard) {
+                const dropIndex = parseInt(targetCard.dataset.index);
+                
+                // Swap in data array
+                const movedItem = columns.splice(dragIndex, 1)[0];
+                columns.splice(dropIndex, 0, movedItem);
+
+                // Re-render
+                renderColumnConfig();
+                renderTable();
+            }
+            return false;
+        }
+
+        function handleDragEnd() {
+            this.classList.remove('dragging');
+            const items = document.querySelectorAll('#columnListContainer > div');
+            items.forEach(item => item.classList.remove('dragging'));
+        }
+
+        // --- UI Interactions ---
+
+        function toggleHistory() {
+            const panel = document.getElementById('historyPanel');
+            const favPanel = document.getElementById('favoritePanel');
+            
+            // 他のパネルが開いていたら閉じる
+            if (favPanel.classList.contains('panel-open')) {
+                favPanel.classList.remove('panel-open');
+                favPanel.classList.add('panel-closed');
+            }
+
+            if (panel.classList.contains('panel-closed')) {
+                panel.classList.remove('panel-closed');
+                panel.classList.add('panel-open');
+            } else {
+                panel.classList.remove('panel-open');
+                panel.classList.add('panel-closed');
+            }
+        }
+        
+        function toggleFavorite() {
+            const panel = document.getElementById('favoritePanel');
+            const histPanel = document.getElementById('historyPanel');
+
+             // 他のパネルが開いていたら閉じる
+            if (histPanel.classList.contains('panel-open')) {
+                histPanel.classList.remove('panel-open');
+                histPanel.classList.add('panel-closed');
+            }
+
+            if (panel.classList.contains('panel-closed')) {
+                panel.classList.remove('panel-closed');
+                panel.classList.add('panel-open');
+            } else {
+                panel.classList.remove('panel-open');
+                panel.classList.add('panel-closed');
+            }
+        }
+        
+        // Header buttons
+        document.getElementById('historyToggleBtn').addEventListener('click', toggleHistory);
+        document.getElementById('favoriteToggleBtn').addEventListener('click', toggleFavorite);
+
+        function toggleAI() {
+            const aiWin = document.getElementById('aiChatWindow');
+            if (aiWin.classList.contains('chat-hidden')) {
+                aiWin.classList.remove('chat-hidden');
+                aiWin.classList.add('chat-visible');
+            } else {
+                aiWin.classList.remove('chat-visible');
+                aiWin.classList.add('chat-hidden');
+            }
+        }
+
+        function refreshPreview() {
+            showToast('プレビューデータを更新しました', 'blue');
+            // Simulation: Slight flicker or loading state could go here
+        }
+
+        function exportCSV() {
+            showToast('CSV出力処理を開始しました (模擬)', 'green');
+            document.getElementById('statusText').textContent = 'ステータス: 処理中...';
+            setTimeout(() => {
+                document.getElementById('statusText').textContent = 'ステータス: 完了';
+            }, 2000);
+        }
+
+        function saveFavorite() {
+            const name = prompt("お気に入りの名前を入力してください", "月次請求設定 A");
+            if (name) {
+                showToast(`設定「${name}」を保存しました`, 'indigo');
+            }
+        }
+
+        function showToast(message, color = 'green') {
+            const container = document.getElementById('toastContainer');
+            const msgEl = document.getElementById('toastMessage');
+            const icon = container.querySelector('i');
+
+            msgEl.textContent = message;
+            
+            // Basic color switching logic
+            icon.className = color === 'green' ? 'fa-solid fa-circle-check text-green-400' : 
+                             color === 'blue' ? 'fa-solid fa-rotate text-blue-400' :
+                             'fa-solid fa-star text-indigo-400';
+
+            container.classList.remove('opacity-0', 'translate-y-4');
+            
+            setTimeout(() => {
+                container.classList.add('opacity-0', 'translate-y-4');
+            }, 3000);
+        }
+
+    </script>
+</body>
+</html>
